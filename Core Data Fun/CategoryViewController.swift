@@ -7,16 +7,44 @@
 //
 
 import UIKit
+import CoreData
+
+
+// MARK: - Core Data
+// we've mad e a DataModel that abstracts a SQLite database for use
+// there is some Care DAta jargon to learn
+// Core Data Entity <--> Swift Type <--> database table
+// Core Data Attribute <--> Swift Property <--> database field
+// therefore a row in a table is like an object of a type
+
+// all of the underlying data sotre queries and methods are managed through an interface of type NSPersistentContainer
+// NSPersistentContainer has a NSManagedObjectContext which is like an intelligent scratchpad
+// think of the context like the staging area of a git repo
+// saving the context is like committing in git, its when our changes are actually written to disk
+
 
 class CategoryViewController: UITableViewController {
     
-    var categoryArray = ["Home", "Work", "Family"]
+    // recall: a persistent container abstracts a data store for us
+    // by default the data store for core data is a SQLite database
+    // we work with a persistent container's context instead of with the persistent container directly
+    // we will use the context for common DB style operations
+    // CRud: Create, Read, Update, Delete
+    
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+    var categoryArray = [Category]()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
         
         self.navigationItem.leftBarButtonItem = self.editButtonItem
+        
+        // print out the URL to the app's document directory
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        print(documentsDirectory)
+        
+        loadCategories()
     }
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -29,15 +57,22 @@ class CategoryViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell", for: indexPath)
         let category = categoryArray[indexPath.row]
-        cell.textLabel?.text = category
+        cell.textLabel?.text = category.name
         
         return cell
     }
     
     override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
         if editingStyle == .delete {
+            // before removing from the array and the table view, we need to remove from our context and then save the context so
+            // the delete persists
+            context.delete(categoryArray[indexPath.row])
             categoryArray.remove(at: indexPath.row)
             tableView.deleteRows(at: [indexPath], with: .fade)
+            
+            // have the delete persists
+            saveCategories()
+            
         }
     }
     
@@ -59,12 +94,44 @@ class CategoryViewController: UITableViewController {
         
         let action = UIAlertAction(title: "Create", style: .default) { (alertAction) in
             let text = alertTextField.text!
-            self.categoryArray.append(text)
-            self.tableView.reloadData()
+            // need to CREATE a Category object using context
+            let newCategory = Category(context: self.context)
+            newCategory.name = text
+            self.categoryArray.append(newCategory)
+
+            self.saveCategories()
         }
         
         alert.addAction(action)
         present(alert, animated: true, completion: nil)
+    }
+    
+    func saveCategories() {
+        // this method will write the changes we have amde to our context to disk (SQLite Database)
+        do {
+            try context.save() // like a git commit
+        }
+        catch{
+            print("Error saving categories")
+        }
+        
+        
+        self.tableView.reloadData()
+    }
+    
+    func loadCategories(){
+        // READ
+        // need "request" data from the persistent container using the context
+        let request: NSFetchRequest<Category> = Category.fetchRequest()
+        // typically with a SELECT statemnt, if you don't want all the rows in the table, you would specify a WHERE clause.
+        // if we wanted a subset of the rows, we would use a NSPrediscate object and add it to our request
+        // don't need to do this now, becuase we do want all categories
+        do{
+            categoryArray = try context.fetch(request)
+        }
+        catch{
+            print("Error fetching categories: \(error)")
+        }
     }
     
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
